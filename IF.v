@@ -17,9 +17,9 @@ module IF(
     output wire [31:0] inst_sram_wdata
 );
     reg [31:0] pc_reg;
-    reg ce_reg;
+    reg ce_reg; //取值使能
     wire [31:0] next_pc;
-    wire br_e;
+    wire br_e;  //跳转使能
     wire [31:0] br_addr;
 
     assign {

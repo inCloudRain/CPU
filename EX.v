@@ -34,8 +34,8 @@ module EX(
 
     wire [31:0] ex_pc, inst;
     wire [11:0] alu_op;
-    wire [2:0] sel_alu_src1;
-    wire [3:0] sel_alu_src2;
+    wire [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
+    wire [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
     wire data_ram_en;
     wire [3:0] data_ram_wen;
     wire rf_we;

@@ -11,7 +11,7 @@ module ID(
 
     input wire [31:0] inst_sram_rdata,
 
-    input wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus,
+    input wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus, //来自WB段的写寄存器指令
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
@@ -21,9 +21,9 @@ module ID(
     reg [`IF_TO_ID_WD-1:0] if_to_id_bus_r;
     wire [31:0] inst;
     wire [31:0] id_pc;
-    wire ce;
+    wire ce;    //取指使能（指令有效信号）
 
-    wire wb_rf_we;
+    wire wb_rf_we;  //写寄存器使能
     wire [4:0] wb_rf_waddr;
     wire [31:0] wb_rf_wdata;
 
@@ -53,6 +53,7 @@ module ID(
         wb_rf_wdata
     } = wb_to_rf_bus;
 
+    //指令中各部分，详见A03
     wire [5:0] opcode;
     wire [4:0] rs,rt,rd,sa;
     wire [5:0] func;
@@ -63,16 +64,17 @@ module ID(
     wire [15:0] offset;
     wire [2:0] sel;
 
-    wire [63:0] op_d, func_d;
-    wire [31:0] rs_d, rt_d, rd_d, sa_d;
+    wire [63:0] op_d, func_d;   //独热码
+    wire [31:0] rs_d, rt_d, rd_d, sa_d;  //独热码
 
-    wire [2:0] sel_alu_src1;
-    wire [3:0] sel_alu_src2;
+    wire [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
+    wire [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
     wire [11:0] alu_op;
 
     wire data_ram_en;
     wire [3:0] data_ram_wen;
     
+    //写寄存器相关，不实际执行，送入后续段
     wire rf_we;
     wire [4:0] rf_waddr;
     wire sel_rf_res;

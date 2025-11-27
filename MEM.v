@@ -48,7 +48,7 @@ module MEM(
         ex_result       // 31:0
     } =  ex_to_mem_bus_r;
 
-
+    //TODO 从内存中取数据存入mem_result
 
     assign rf_wdata = sel_rf_res ? mem_result : ex_result;
 
