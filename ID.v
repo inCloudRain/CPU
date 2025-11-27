@@ -64,35 +64,6 @@ module ID(
     wire [15:0] offset;
     wire [2:0] sel;
 
-    wire [63:0] op_d, func_d;   //独热码
-    wire [31:0] rs_d, rt_d, rd_d, sa_d;  //独热码
-
-    wire [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
-    wire [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
-    wire [11:0] alu_op;
-
-    wire data_ram_en;
-    wire [3:0] data_ram_wen;
-    
-    //写寄存器相关，不实际执行，送入后续段
-    wire rf_we;
-    wire [4:0] rf_waddr;
-    wire sel_rf_res;
-    wire [2:0] sel_rf_dst;
-
-    wire [31:0] rdata1, rdata2;
-
-    regfile u_regfile(
-    	.clk    (clk    ),
-        .raddr1 (rs ),
-        .rdata1 (rdata1 ),
-        .raddr2 (rt ),
-        .rdata2 (rdata2 ),
-        .we     (wb_rf_we     ),
-        .waddr  (wb_rf_waddr  ),
-        .wdata  (wb_rf_wdata  )
-    );
-
     assign opcode = inst[31:26];
     assign rs = inst[25:21];
     assign rt = inst[20:16];
@@ -106,11 +77,42 @@ module ID(
     assign offset = inst[15:0];
     assign sel = inst[2:0];
 
-    wire inst_ori, inst_lui, inst_addiu, inst_beq;
+    wire [63:0] op_d, func_d;   //独热码
+    wire [31:0] rs_d, rt_d, rd_d, sa_d;  //独热码
 
-    wire op_add, op_sub, op_slt, op_sltu;
-    wire op_and, op_nor, op_or, op_xor;
-    wire op_sll, op_srl, op_sra, op_lui;
+    reg [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
+    reg [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
+    wire [11:0] alu_op;
+
+    reg br_e;
+    reg [31:0] br_addr;
+
+    //写数据内存相关，不实际执行，送入后续段
+    reg data_ram_en;
+    reg [3:0] data_ram_wen;
+    
+    //写寄存器相关，不实际执行，送入后续段
+    reg rf_we;
+    wire [4:0] rf_waddr;
+    reg sel_rf_res;    //0：alu结果；1：访存结果
+    reg [2:0] sel_rf_dst;  //rd, rt, $31
+
+    reg op_add, op_sub, op_slt, op_sltu;
+    reg op_and, op_nor, op_or, op_xor;
+    reg op_sll, op_srl, op_sra, op_lui;
+
+    wire [31:0] rdata1, rdata2;
+
+    regfile u_regfile(
+    	.clk    (clk    ),
+        .raddr1 (rs ),
+        .rdata1 (rdata1 ),
+        .raddr2 (rt ),
+        .rdata2 (rdata2 ),
+        .we     (wb_rf_we     ),
+        .waddr  (wb_rf_waddr  ),
+        .wdata  (wb_rf_wdata  )
+    );
 
     decoder_6_64 u0_decoder_6_64(
     	.in  (opcode  ),
@@ -132,84 +134,55 @@ module ID(
         .out (rt_d )
     );
 
-    
-    assign inst_ori     = op_d[6'b00_1101];
-    assign inst_lui     = op_d[6'b00_1111];
-    assign inst_addiu   = op_d[6'b00_1001];
-    assign inst_beq     = op_d[6'b00_0100];
+    always @ (*) begin  //译码核心
+        //初始化，必须显式赋值
+        sel_alu_src1 = 3'b000;
+        sel_alu_src2 = 4'b0000;
+        sel_rf_dst = 3'b000;
+        
+        //绝大部分情况下的默认值，不显式赋默认值
+        br_e = 1'b0;
+        // br_addr = 32'b0;
+        data_ram_en = 1'b0;
+        // data_ram_wen = 4'b0;
+        rf_we = 1'b1;
+        sel_rf_res = 1'b0;
+        {op_add, op_sub, op_slt, op_sltu,
+         op_and, op_nor, op_or, op_xor,
+         op_sll, op_srl, op_sra, op_lui} = 12'b0;
 
-
-
-    // rs to reg1
-    assign sel_alu_src1[0] = inst_ori | inst_addiu;
-
-    // pc to reg1
-    assign sel_alu_src1[1] = 1'b0;
-
-    // sa_zero_extend to reg1
-    assign sel_alu_src1[2] = 1'b0;
-
-    
-    // rt to reg2
-    assign sel_alu_src2[0] = 1'b0;
-    
-    // imm_sign_extend to reg2
-    assign sel_alu_src2[1] = inst_lui | inst_addiu;
-
-    // 32'b8 to reg2
-    assign sel_alu_src2[2] = 1'b0;
-
-    // imm_zero_extend to reg2
-    assign sel_alu_src2[3] = inst_ori;
-
-
-
-    assign op_add = inst_addiu;
-    assign op_sub = 1'b0;
-    assign op_slt = 1'b0;
-    assign op_sltu = 1'b0;
-    assign op_and = 1'b0;
-    assign op_nor = 1'b0;
-    assign op_or = inst_ori;
-    assign op_xor = 1'b0;
-    assign op_sll = 1'b0;
-    assign op_srl = 1'b0;
-    assign op_sra = 1'b0;
-    assign op_lui = inst_lui;
+        if(op_d[6'b001101]) begin   //ori
+            op_or=1'b1;
+            sel_alu_src1[0]=1'b1; //rs
+            sel_alu_src2[3]=1'b1; //imm_zero_extend
+            sel_rf_dst[1]=1'b1; //rt
+        end else if(op_d[6'b001111]) begin   //lui
+            op_lui=1'b1;
+            sel_alu_src2[1]=1'b1; //imm_sign_extend
+            sel_rf_dst[1]=1'b1; //rt
+        end else if(op_d[6'b001001]) begin   //addiu
+            op_add=1'b1;
+            sel_alu_src1[0]=1'b1; //rs
+            sel_alu_src2[1]=1'b1; //imm_sign_extend
+            sel_rf_dst[1]=1'b1; //rt
+        end else if(op_d[6'b000100])begin  //beq
+            rf_we=1'b0;
+            if(rdata1==rdata2) begin
+                br_e=1'b1;
+                br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00};
+            end
+        end
+    end
 
     assign alu_op = {op_add, op_sub, op_slt, op_sltu,
                      op_and, op_nor, op_or, op_xor,
                      op_sll, op_srl, op_sra, op_lui};
-
-
-
-    // load and store enable
-    assign data_ram_en = 1'b0;
-
-    // write enable
-    assign data_ram_wen = 1'b0;
-
-
-
-    // regfile store enable
-    assign rf_we = inst_ori | inst_lui | inst_addiu;
-
-
-
-    // store in [rd]
-    assign sel_rf_dst[0] = 1'b0;
-    // store in [rt] 
-    assign sel_rf_dst[1] = inst_ori | inst_lui | inst_addiu;
-    // store in [31]
-    assign sel_rf_dst[2] = 1'b0;
 
     // sel for regfile address
     assign rf_waddr = {5{sel_rf_dst[0]}} & rd 
                     | {5{sel_rf_dst[1]}} & rt
                     | {5{sel_rf_dst[2]}} & 32'd31;
 
-    // 0 from alu_res ; 1 from ld_res
-    assign sel_rf_res = 1'b0; 
 
     assign id_to_ex_bus = {
         id_pc,          // 158:127
@@ -225,22 +198,6 @@ module ID(
         rdata1,         // 63:32
         rdata2          // 31:0
     };
-
-
-    wire br_e;
-    wire [31:0] br_addr;
-    wire rs_eq_rt;
-    wire rs_ge_z;
-    wire rs_gt_z;
-    wire rs_le_z;
-    wire rs_lt_z;
-    wire [31:0] pc_plus_4;
-    assign pc_plus_4 = id_pc + 32'h4;
-
-    assign rs_eq_rt = (rdata1 == rdata2);
-
-    assign br_e = inst_beq & rs_eq_rt;
-    assign br_addr = inst_beq ? (pc_plus_4 + {{14{inst[15]}},inst[15:0],2'b0}) : 32'b0;
 
     assign br_bus = {
         br_e,
