@@ -15,6 +15,8 @@ module ID(
 
     input wire [`EX_TO_MEM_WD-1:0] ex_to_mem_bus, //EX/MEM段缓存，用于重定向
 
+    input wire [`MEM_TO_WB_WD-1:0] mem_to_wb_bus, //MEM/WB段缓存，用于重定向
+
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
     output wire [`BR_WD-1:0] br_bus 
@@ -141,9 +143,17 @@ module ID(
     wire [4:0] ex_to_mem_rwaddr=ex_to_mem_bus[36:32];
     wire [31:0] ex_to_mem_rwdata=ex_to_mem_bus[31:0];
 
+    wire mem_to_wb_rwe=mem_to_wb_bus[37];
+    wire [4:0] mem_to_wb_rwaddr=mem_to_wb_bus[36:32];
+    wire [31:0] mem_to_wb_rwdata=mem_to_wb_bus[31:0];
+
     wire [31:0] data1, data2;
-    assign data1 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rs) ? ex_to_mem_rwdata : rdata1;
-    assign data2 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rt) ? ex_to_mem_rwdata : rdata2;
+    assign data1 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rs) ? ex_to_mem_rwdata :
+                   (mem_to_wb_rwe && mem_to_wb_rwaddr==rs) ? mem_to_wb_rwdata :
+                    rdata1;
+    assign data2 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rt) ? ex_to_mem_rwdata :
+                   (mem_to_wb_rwe && mem_to_wb_rwaddr==rt) ? mem_to_wb_rwdata :
+                    rdata2;
 
     always @ (*) begin  //译码核心
         //初始化，必须显式赋值
