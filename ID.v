@@ -13,6 +13,8 @@ module ID(
 
     input wire [`WB_TO_RF_WD-1:0] wb_to_rf_bus, //来自WB段的写寄存器指令
 
+    input wire [`EX_TO_MEM_WD-1:0] ex_to_mem_bus, //EX/MEM段缓存，用于重定向
+
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
     output wire [`BR_WD-1:0] br_bus 
@@ -134,6 +136,15 @@ module ID(
         .out (rt_d )
     );
 
+    //重定向
+    wire ex_to_mem_rwe=ex_to_mem_bus[37];
+    wire [4:0] ex_to_mem_rwaddr=ex_to_mem_bus[36:32];
+    wire [31:0] ex_to_mem_rwdata=ex_to_mem_bus[31:0];
+
+    wire [31:0] data1, data2;
+    assign data1 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rs) ? ex_to_mem_rwdata : rdata1;
+    assign data2 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rt) ? ex_to_mem_rwdata : rdata2;
+
     always @ (*) begin  //译码核心
         //初始化，必须显式赋值
         sel_alu_src1 = 3'b000;
@@ -167,7 +178,7 @@ module ID(
             sel_rf_dst[1]=1'b1; //rt
         end else if(op_d[6'b000100])begin  //beq
             rf_we=1'b0;
-            if(rdata1==rdata2) begin
+            if(data1==data2) begin
                 br_e=1'b1;
                 br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00};
             end
@@ -195,8 +206,8 @@ module ID(
         rf_we,          // 70
         rf_waddr,       // 69:65
         sel_rf_res,     // 64
-        rdata1,         // 63:32
-        rdata2          // 31:0
+        data1,         // 63:32
+        data2          // 31:0
     };
 
     assign br_bus = {
