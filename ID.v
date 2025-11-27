@@ -162,7 +162,14 @@ module ID(
          op_and, op_nor, op_or, op_xor,
          op_sll, op_srl, op_sra, op_lui} = 12'b0;
 
-        if(op_d[6'b001101]) begin   //ori
+        if(op_d[6'b000000]) begin   //R型指令
+            if(func_d[6'b100011]) begin   //subu
+                op_sub=1'b1;
+                sel_alu_src1[0]=1'b1; //rs
+                sel_alu_src2[0]=1'b1; //rt
+                sel_rf_dst[0]=1'b1; //rd
+            end
+        end else if(op_d[6'b001101]) begin   //ori
             op_or=1'b1;
             sel_alu_src1[0]=1'b1; //rs
             sel_alu_src2[3]=1'b1; //imm_zero_extend
