@@ -81,9 +81,6 @@ module ID(
     assign offset = inst[15:0];
     assign sel = inst[2:0];
 
-    wire [63:0] op_d, func_d;   //独热码
-    wire [31:0] rs_d, rt_d, rd_d, sa_d;  //独热码
-
     reg [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
     reg [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
     wire [11:0] alu_op;
@@ -118,42 +115,21 @@ module ID(
         .wdata  (wb_rf_wdata  )
     );
 
-    decoder_6_64 u0_decoder_6_64(
-    	.in  (opcode  ),
-        .out (op_d )
-    );
-
-    decoder_6_64 u1_decoder_6_64(
-    	.in  (func  ),
-        .out (func_d )
-    );
-    
-    decoder_5_32 u0_decoder_5_32(
-    	.in  (rs  ),
-        .out (rs_d )
-    );
-
-    decoder_5_32 u1_decoder_5_32(
-    	.in  (rt  ),
-        .out (rt_d )
-    );
-
     //重定向
-    wire ex_to_mem_rwe=ex_to_mem_bus[37];
-    wire [4:0] ex_to_mem_rwaddr=ex_to_mem_bus[36:32];
-    wire [31:0] ex_to_mem_rwdata=ex_to_mem_bus[31:0];
+    wire ex_to_mem_rwe = ex_to_mem_bus[37];
+    wire [4:0] ex_to_mem_rwaddr = ex_to_mem_bus[36:32];
+    wire [31:0] ex_to_mem_rwdata = ex_to_mem_bus[31:0];
 
-    wire mem_to_wb_rwe=mem_to_wb_bus[37];
-    wire [4:0] mem_to_wb_rwaddr=mem_to_wb_bus[36:32];
-    wire [31:0] mem_to_wb_rwdata=mem_to_wb_bus[31:0];
-
+    wire mem_to_wb_rwe = mem_to_wb_bus[37];
+    wire [4:0] mem_to_wb_rwaddr = mem_to_wb_bus[36:32];
+    wire [31:0] mem_to_wb_rwdata = mem_to_wb_bus[31:0];
     wire [31:0] data1, data2;
-    assign data1 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rs) ? ex_to_mem_rwdata :
-                   (mem_to_wb_rwe && mem_to_wb_rwaddr==rs) ? mem_to_wb_rwdata :
-                    rdata1;
-    assign data2 = (ex_to_mem_rwe && ex_to_mem_rwaddr==rt) ? ex_to_mem_rwdata :
-                   (mem_to_wb_rwe && mem_to_wb_rwaddr==rt) ? mem_to_wb_rwdata :
-                    rdata2;
+    assign data1 = ex_to_mem_rwe && ex_to_mem_rwaddr==rs ? ex_to_mem_rwdata :
+                   mem_to_wb_rwe && mem_to_wb_rwaddr==rs ? mem_to_wb_rwdata :
+                   rdata1;
+    assign data2 = ex_to_mem_rwe && ex_to_mem_rwaddr==rt ? ex_to_mem_rwdata :
+                   mem_to_wb_rwe && mem_to_wb_rwaddr==rt ? mem_to_wb_rwdata :
+                   rdata2;
 
     always @ (*) begin  //译码核心
         //初始化，必须显式赋值
@@ -162,51 +138,83 @@ module ID(
         sel_rf_dst = 3'b000;
         
         //绝大部分情况下的默认值，不显式赋默认值
-        br_e = 1'b0;
-        // br_addr = 32'b0;
-        data_ram_en = 1'b0;
-        // data_ram_wen = 4'b0;
-        rf_we = 1'b1;
-        sel_rf_res = 1'b0;
         {op_add, op_sub, op_slt, op_sltu,
          op_and, op_nor, op_or, op_xor,
          op_sll, op_srl, op_sra, op_lui} = 12'b0;
 
-        if(op_d[6'b000000]) begin   //R型指令
-            if(func_d[6'b100011]) begin   //subu
-                op_sub=1'b1;
-                sel_alu_src1[0]=1'b1; //rs
-                sel_alu_src2[0]=1'b1; //rt
-                sel_rf_dst[0]=1'b1; //rd
+        //计算指令默认值
+        br_e = 1'b0;
+        br_addr = 32'b0;
+        data_ram_en = 1'b0;
+        data_ram_wen = 4'b0;
+        rf_we = 1'b1;
+        sel_rf_res = 1'b0;
+        case(opcode)
+            6'b000000: begin
+            case(func)  //R型计算指令
+                6'b100011: begin   //subu
+                    op_sub = 1'b1;
+                    sel_alu_src1[0] = 1'b1; //rs
+                    sel_alu_src2[0] = 1'b1; //rt
+                    sel_rf_dst[0] = 1'b1; //rd
+                end
+                //R型跳转指令
+                6'b001000: begin  //jr
+                    rf_we = 1'b0;
+                    br_e = 1'b1;
+                    br_addr = data1;
+                end
+            endcase end
+            //I型计算指令
+            6'b001101: begin   //ori
+                op_or = 1'b1;
+                sel_alu_src1[0] = 1'b1; //rs
+                sel_alu_src2[3] = 1'b1; //imm_zero_extend
+                sel_rf_dst[1] = 1'b1; //rt
             end
-        end else if(op_d[6'b001101]) begin   //ori
-            op_or=1'b1;
-            sel_alu_src1[0]=1'b1; //rs
-            sel_alu_src2[3]=1'b1; //imm_zero_extend
-            sel_rf_dst[1]=1'b1; //rt
-        end else if(op_d[6'b001111]) begin   //lui
-            op_lui=1'b1;
-            sel_alu_src2[1]=1'b1; //imm_sign_extend
-            sel_rf_dst[1]=1'b1; //rt
-        end else if(op_d[6'b001001]) begin   //addiu
-            op_add=1'b1;
-            sel_alu_src1[0]=1'b1; //rs
-            sel_alu_src2[1]=1'b1; //imm_sign_extend
-            sel_rf_dst[1]=1'b1; //rt
-        end else if(op_d[6'b000100]) begin  //beq
-            rf_we=1'b0;
-            if(data1==data2) begin
-                br_e=1'b1;
-                br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00};
+            6'b001111: begin   //lui
+                op_lui = 1'b1;
+                sel_alu_src2[1] = 1'b1; //imm_sign_extend
+                sel_rf_dst[1] = 1'b1; //rt
             end
-        end else if(op_d[6'b101011]) begin  //sw
-            rf_we=1'b0;
-            data_ram_en=1'b1;
-            data_ram_wen=4'b1111;
-            op_add=1'b1;
-            sel_alu_src1[0]=1'b1; //rs
-            sel_alu_src2[1]=1'b1; //imm_sign_extend
-        end
+            6'b001001: begin   //addiu
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; //rs
+                sel_alu_src2[1] = 1'b1; //imm_sign_extend
+                sel_rf_dst[1] = 1'b1; //rt
+            end
+        default: begin
+            //跳转指令初始化
+            br_addr = 32'b0;
+
+            //跳转指令默认值
+            br_e = 1'b1;
+            data_ram_en = 1'b0;
+            data_ram_wen = 4'b0;
+            rf_we = 1'b0;
+            sel_rf_res = 1'b0;
+        case(opcode) //跳转指令
+            6'b000100: begin  //beq
+                br_e = (data1 == data2);
+                br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+            end
+        default: begin
+            //访存指令初始化
+            data_ram_wen = 4'b0;
+            //访存指令默认值
+            br_e = 1'b0;
+            br_addr = 32'b0;
+            data_ram_en = 1'b1;
+            rf_we = 1'b0;
+            sel_rf_res = 1'b0;
+        case(opcode) //访存指令
+            6'b101011: begin  //sw
+                data_ram_wen = 4'b1111;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; //rs
+                sel_alu_src2[1] = 1'b1; //imm_sign_extend
+            end
+        endcase end endcase end endcase
     end
 
     assign alu_op = {op_add, op_sub, op_slt, op_sltu,
