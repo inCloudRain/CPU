@@ -194,6 +194,14 @@ module ID(
             rf_we = 1'b0;
             sel_rf_res = 1'b0;
         case(opcode) //跳转指令
+            6'b000011: begin  //jal
+                rf_we = 1'b1;
+                op_add = 1'b1;
+                sel_alu_src1[1] = 1'b1; //pc
+                sel_alu_src2[2] = 1'b1; //32'b8
+                sel_rf_dst[2] = 1'b1; //$31
+                br_addr = {id_pc[31:28], instr_index, 2'b00};
+            end
             6'b000100: begin  //beq
                 br_e = (data1 == data2);
                 br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
