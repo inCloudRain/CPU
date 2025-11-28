@@ -126,9 +126,11 @@ module ID(
     wire [31:0] data1, data2;
     assign data1 = ex_to_mem_rwe && ex_to_mem_rwaddr==rs ? ex_to_mem_rwdata :
                    mem_to_wb_rwe && mem_to_wb_rwaddr==rs ? mem_to_wb_rwdata :
+                   wb_rf_we && wb_rf_waddr==rs ? wb_rf_wdata :
                    rdata1;
     assign data2 = ex_to_mem_rwe && ex_to_mem_rwaddr==rt ? ex_to_mem_rwdata :
                    mem_to_wb_rwe && mem_to_wb_rwaddr==rt ? mem_to_wb_rwdata :
+                   wb_rf_we && wb_rf_waddr==rt ? wb_rf_wdata :
                    rdata2;
 
     always @ (*) begin  //译码核心
