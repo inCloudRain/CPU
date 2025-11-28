@@ -342,22 +342,37 @@ module ID(
                 br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
             end
         default: begin
-            //访存指令初始化
+            //读存指令默认值
+            br_e = 1'b0;
+            br_addr = 32'b0;
+            data_ram_en = 1'b1;
             data_ram_wen = 4'b0;
-            //访存指令默认值
+            rf_we = 1'b1;
+            sel_rf_res = 1'b1;
+        case(opcode) //读存指令
+            6'b100011: begin  //lw
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+                sel_rf_dst[1] = 1'b1;   // rt
+            end
+        default: begin
+            //写存指令初始化
+            data_ram_wen = 4'b0;
+            //写存指令默认值
             br_e = 1'b0;
             br_addr = 32'b0;
             data_ram_en = 1'b1;
             rf_we = 1'b0;
             sel_rf_res = 1'b0;
-        case(opcode) //访存指令
+        case(opcode) //写存指令
             6'b101011: begin  //sw
                 data_ram_wen = 4'b1111;
                 op_add = 1'b1;
                 sel_alu_src1[0] = 1'b1; // rs
                 sel_alu_src2[1] = 1'b1; // imm_sign_extend
             end
-        endcase end endcase end endcase
+        endcase end endcase end endcase end endcase
     end
 
     assign alu_op = {op_add, op_sub, op_slt, op_sltu,
