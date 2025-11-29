@@ -2,7 +2,7 @@
 module CTRL(
     input wire rst,
     // input wire stallreq_for_ex,
-    // input wire stallreq_for_load,
+    input wire stallreq_for_load,
 
     // output reg flush,
     // output reg [31:0] new_pc,
@@ -13,7 +13,12 @@ module CTRL(
             stall = `StallBus'b0;
         end
         else begin
-            stall = `StallBus'b0;
+            if (stallreq_for_load ) begin
+                stall = `StallBus'b111; //暂停IF, ID, EX
+            end
+            else begin
+                stall = `StallBus'b0;
+            end
         end
     end
 

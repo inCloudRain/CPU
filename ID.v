@@ -19,7 +19,9 @@ module ID(
 
     output wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
-    output wire [`BR_WD-1:0] br_bus 
+    output wire [`BR_WD-1:0] br_bus,
+
+    output wire stallreq_for_load
 );
 
     reg [`IF_TO_ID_WD-1:0] if_to_id_bus_r;
@@ -115,7 +117,8 @@ module ID(
         .wdata  (wb_rf_wdata  )
     );
 
-    //重定向
+
+    wire ex_to_mem_load = ex_to_mem_bus[38];
     wire ex_to_mem_rwe = ex_to_mem_bus[37];
     wire [4:0] ex_to_mem_rwaddr = ex_to_mem_bus[36:32];
     wire [31:0] ex_to_mem_rwdata = ex_to_mem_bus[31:0];
@@ -124,6 +127,13 @@ module ID(
     wire [4:0] mem_to_wb_rwaddr = mem_to_wb_bus[36:32];
     wire [31:0] mem_to_wb_rwdata = mem_to_wb_bus[31:0];
     wire [31:0] data1, data2;
+
+    //读存停顿
+    assign stallreq_for_load = ex_to_mem_load && 
+                               ((ex_to_mem_rwaddr==rs && sel_alu_src1[0]) ||
+                                (ex_to_mem_rwaddr==rt && sel_alu_src2[0]));
+
+    //重定向
     assign data1 = ex_to_mem_rwe && ex_to_mem_rwaddr==rs ? ex_to_mem_rwdata :
                    mem_to_wb_rwe && mem_to_wb_rwaddr==rs ? mem_to_wb_rwdata :
                    wb_rf_we && wb_rf_waddr==rs ? wb_rf_wdata :
