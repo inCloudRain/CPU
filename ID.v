@@ -129,10 +129,12 @@ module ID(
     wire [31:0] data1, data2;
 
     //读存停顿
-    assign stallreq_for_load = ex_to_mem_load && 
-                               ((ex_to_mem_rwaddr==rs && sel_alu_src1[0]) ||
-                                (ex_to_mem_rwaddr==rt && sel_alu_src2[0]));
+    reg use_data1, use_data2;   //跳转指令使用，计算指令可通过sel_alu_src判断
 
+    assign stallreq_for_load = ex_to_mem_load && 
+                               ((use_data1 || sel_alu_src1[0]) && (ex_to_mem_rwaddr==rs) ||
+                                (use_data2 || sel_alu_src2[0]) && (ex_to_mem_rwaddr==rt));
+ 
     //重定向
     assign data1 = ex_to_mem_rwe && ex_to_mem_rwaddr==rs ? ex_to_mem_rwdata :
                    mem_to_wb_rwe && mem_to_wb_rwaddr==rs ? mem_to_wb_rwdata :
@@ -261,12 +263,12 @@ module ID(
                     sel_rf_dst[0] = 1'b1;   // rd
                 end
                 //R型跳转指令
-                6'b001000: begin  //jr
+                6'b001000: begin  // jr
                     rf_we = 1'b0;
                     br_e = 1'b1;
                     br_addr = data1;
                 end
-                6'b001001: begin  //jalr
+                6'b001001: begin  // jalr
                     rf_we = 1'b1;
                     op_add = 1'b1;
                     sel_alu_src1[1] = 1'b1; // pc
@@ -339,7 +341,49 @@ module ID(
             rf_we = 1'b0;
             sel_rf_res = 1'b0;
         case(opcode) //跳转指令
-            6'b000011: begin  //jal
+            6'b000001: begin // bltz, bgez
+                case(rt)
+                    5'b00000: begin // bltz
+                        use_data1 = 1'b1;
+                        br_e = ($signed(data1) < 0);
+                        br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+                    end
+                    5'b00001: begin // bgez
+                        use_data1 = 1'b1;
+                        br_e = ($signed(data1) >= 0);
+                        br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+                    end
+                    5'b10000: begin // bltzal
+                        rf_we = 1'b1;
+                        op_add = 1'b1;
+                        sel_alu_src1[1] = 1'b1; // pc
+                        sel_alu_src2[2] = 1'b1; // 32'b8
+                        sel_rf_dst[2] = 1'b1;   // $31
+                        use_data1 = 1'b1;
+                        br_e = ($signed(data1) < 0);
+                        br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+                    end
+                    5'b10001: begin // bgezal
+                        rf_we = 1'b1;
+                        op_add = 1'b1;
+                        sel_alu_src1[1] = 1'b1; // pc
+                        sel_alu_src2[2] = 1'b1; // 32'b8
+                        sel_rf_dst[2] = 1'b1;   // $31
+                        use_data1 = 1'b1;
+                        br_e = ($signed(data1) >= 0);
+                        br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+                    end
+                    default: begin
+                        //理应永不到达
+                        br_e = 1'b0;
+                        br_addr = 32'b0;
+                    end
+                endcase
+            end
+            6'b000010: begin  // j
+                br_addr = {id_pc[31:28], instr_index, 2'b00};
+            end
+            6'b000011: begin  // jal
                 rf_we = 1'b1;
                 op_add = 1'b1;
                 sel_alu_src1[1] = 1'b1; // pc
@@ -347,8 +391,26 @@ module ID(
                 sel_rf_dst[2] = 1'b1;   // $31
                 br_addr = {id_pc[31:28], instr_index, 2'b00};
             end
-            6'b000100: begin  //beq
+            6'b000100: begin  // beq
+                use_data1 = 1'b1;
+                use_data2 = 1'b1;
                 br_e = (data1 == data2);
+                br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+            end
+            6'b000101: begin  // bne
+                use_data1 = 1'b1;
+                use_data2 = 1'b1;
+                br_e = (data1 != data2);
+                br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+            end
+            6'b000110: begin  // blez
+                use_data1 = 1'b1;
+                br_e = ($signed(data1) <= 0);
+                br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
+            end
+            6'b000111: begin  // bgtz
+                use_data1 = 1'b1;
+                br_e = ($signed(data1) > 0);
                 br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
             end
         default: begin
