@@ -12,7 +12,9 @@ module EX(
     output wire data_sram_en,
     output wire [3:0] data_sram_wen,
     output wire [31:0] data_sram_addr,
-    output wire [31:0] data_sram_wdata
+    output wire [31:0] data_sram_wdata,
+
+    output wire stallreq_for_ex
 );
 
     reg [`ID_TO_EX_WD-1:0] id_to_ex_bus_r;
@@ -34,27 +36,33 @@ module EX(
 
     wire [31:0] ex_pc, inst;
     wire [11:0] alu_op;
-    wire [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
+    wire [4:0] sel_alu_src1;    //rs, pc, sa_zero_extend, lo_data, hi_data
     wire [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
     wire data_ram_en;
     wire [3:0] data_ram_wen;
     wire rf_we;
     wire [4:0] rf_waddr;
     wire sel_rf_res;
-    wire [31:0] rf_rdata1, rf_rdata2;
+    wire [31:0] rf_rdata1, rf_rdata2, lo_data, hi_data;
     reg is_in_delayslot;
 
+    wire inst_mul, inst_mulu, inst_div, inst_divu;
+    wire lo_we, hi_we;
+
     assign {
-        ex_pc,          // 148:117
-        inst,           // 116:85
-        alu_op,         // 84:83
-        sel_alu_src1,   // 82:80
-        sel_alu_src2,   // 79:76
-        data_ram_en,    // 75
-        data_ram_wen,   // 74:71
-        rf_we,          // 70
-        rf_waddr,       // 69:65
-        sel_rf_res,     // 64
+        lo_data, hi_data,  // 230:167
+        lo_we, hi_we,      // 166:165
+        inst_mul, inst_mulu, inst_div, inst_divu, // 164 :161
+        ex_pc,             // 160:129
+        inst,              // 128:97
+        alu_op,            // 96:85
+        sel_alu_src1,      // 84:80
+        sel_alu_src2,      // 79:76
+        data_ram_en,       // 75
+        data_ram_wen,      // 74:71
+        rf_we,             // 70
+        rf_waddr,          // 69:65
+        sel_rf_res,        // 64
         rf_rdata1,         // 63:32
         rf_rdata2          // 31:0
     } = id_to_ex_bus_r;
@@ -68,7 +76,9 @@ module EX(
     wire [31:0] alu_result, ex_result;
 
     assign alu_src1 = sel_alu_src1[1] ? ex_pc :
-                      sel_alu_src1[2] ? sa_zero_extend : rf_rdata1;
+                      sel_alu_src1[2] ? sa_zero_extend :
+                      sel_alu_src1[3] ? lo_data :
+                      sel_alu_src1[4] ? hi_data : rf_rdata1;
 
     assign alu_src2 = sel_alu_src2[1] ? imm_sign_extend :
                       sel_alu_src2[2] ? 32'd8 :
@@ -83,16 +93,6 @@ module EX(
 
     assign ex_result = alu_result;
 
-    assign ex_to_mem_bus = {
-        ex_pc,          // 75:44
-        data_ram_en,    // 43
-        data_ram_wen,   // 42:39
-        sel_rf_res,     // 38
-        rf_we,          // 37
-        rf_waddr,       // 36:32
-        ex_result       // 31:0
-    };
-
     //发出访存请求
     assign data_sram_en    = data_ram_en;
     assign data_sram_wen   = data_ram_wen;
@@ -101,20 +101,19 @@ module EX(
 
     // MUL part
     wire [63:0] mul_result;
-    wire mul_signed; // 有符号乘法标记
+    wire mul_signed = inst_mul;
 
     mul u_mul(
     	.clk        (clk            ),
         .resetn     (~rst           ),
         .mul_signed (mul_signed     ),
-        .ina        (      ), // 乘法源操作数1
-        .inb        (      ), // 乘法源操作数2
+        .ina        (rf_rdata1      ), // 乘法源操作数1
+        .inb        (rf_rdata2      ), // 乘法源操作数2
         .result     (mul_result     ) // 乘法结果 64bit
     );
 
     // DIV part
     wire [63:0] div_result;
-    wire inst_div, inst_divu;
     wire div_ready_i;
     reg stallreq_for_div;
     assign stallreq_for_ex = stallreq_for_div;
@@ -204,6 +203,27 @@ module EX(
     end
 
     // mul_result 和 div_result 可以直接使用
-    
-    
+
+    wire [31:0] lo_wdata, hi_wdata;
+    assign lo_wdata = inst_mul || inst_mulu ? mul_result[31:0] :
+                      inst_div || inst_divu ? div_result[31:0] :
+                      rf_rdata1;
+    assign hi_wdata = inst_mul || inst_mulu ? mul_result[63:32] :
+                      inst_div || inst_divu ? div_result[63:32] :
+                      rf_rdata1;
+
+    assign ex_to_mem_bus = {
+        lo_we,          // 141
+        lo_wdata,       // 140:109
+        hi_we,          // 108
+        hi_wdata,       // 107:76
+        ex_pc,          // 75:44
+        data_ram_en,    // 43
+        data_ram_wen,   // 42:39
+        sel_rf_res,     // 38
+        rf_we,          // 37
+        rf_waddr,       // 36:32
+        ex_result       // 31:0
+    };
+
 endmodule

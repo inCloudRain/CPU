@@ -33,6 +33,9 @@ module ID(
     wire [4:0] wb_rf_waddr;
     wire [31:0] wb_rf_wdata;
 
+    wire wb_lo_we, wb_hi_we;
+    wire [31:0] lo_wdata, hi_wdata;
+
     always @ (posedge clk) begin
         if (rst) begin
             if_to_id_bus_r <= `IF_TO_ID_WD'b0;        
@@ -54,9 +57,13 @@ module ID(
         id_pc
     } = if_to_id_bus_r;
     assign {
-        wb_rf_we,
-        wb_rf_waddr,
-        wb_rf_wdata
+        wb_lo_we,    //103
+        lo_wdata,   //102:71
+        wb_hi_we,      //70
+        hi_wdata,   //69:38
+        wb_rf_we,   // 37
+        wb_rf_waddr,    // 36:32
+        wb_rf_wdata // 31:0
     } = wb_to_rf_bus;
 
     //指令中各部分，详见A03
@@ -83,8 +90,8 @@ module ID(
     assign offset = inst[15:0];
     assign sel = inst[2:0];
 
-    reg [2:0] sel_alu_src1;    //rs, pc, sa_zero_extend
-    reg [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
+    reg [4:0] sel_alu_src1;    //0-4: rs, pc, sa_zero_extend, LO, HI
+    reg [3:0] sel_alu_src2;    //0-3: rt, imm_sign_extend, 32'b8, imm_zero_extend
     wire [11:0] alu_op;
 
     reg br_e;
@@ -100,9 +107,13 @@ module ID(
     reg sel_rf_res;    //0：alu结果；1：访存结果
     reg [2:0] sel_rf_dst;  //rd, rt, $31
 
+    reg lo_we, hi_we;
+
     reg op_add, op_sub, op_slt, op_sltu;
     reg op_and, op_nor, op_or, op_xor;
     reg op_sll, op_srl, op_sra, op_lui;
+
+    reg inst_mul, inst_mulu, inst_div, inst_divu;
 
     wire [31:0] rdata1, rdata2;
 
@@ -116,17 +127,37 @@ module ID(
         .waddr  (wb_rf_waddr  ),
         .wdata  (wb_rf_wdata  )
     );
+    reg [31:0] LO, HI;
+
+    always @(posedge clk) begin
+        if(rst) begin
+            LO <= 32'b0;
+            HI <= 32'b0;
+        end
+        else begin
+            if(wb_lo_we) LO <= lo_wdata;
+            if(wb_hi_we) HI <= hi_wdata;
+        end
+    end
 
 
+    wire ex_to_mem_lwe = ex_to_mem_bus[141];
+    wire [31:0] ex_to_mem_lwdata = ex_to_mem_bus[140:109];
+    wire ex_to_mem_hwe = ex_to_mem_bus[108];
+    wire [31:0] ex_to_mem_hwdata = ex_to_mem_bus[107:76];
     wire ex_to_mem_load = ex_to_mem_bus[38];
     wire ex_to_mem_rwe = ex_to_mem_bus[37];
     wire [4:0] ex_to_mem_rwaddr = ex_to_mem_bus[36:32];
     wire [31:0] ex_to_mem_rwdata = ex_to_mem_bus[31:0];
 
+    wire mem_to_wb_lwe = mem_to_wb_bus[135];
+    wire [31:0] mem_to_wb_lwdata = mem_to_wb_bus[134:103];
+    wire mem_to_wb_hwe = mem_to_wb_bus[102];
+    wire [31:0] mem_to_wb_hwdata = mem_to_wb_bus[101:70];
     wire mem_to_wb_rwe = mem_to_wb_bus[37];
     wire [4:0] mem_to_wb_rwaddr = mem_to_wb_bus[36:32];
     wire [31:0] mem_to_wb_rwdata = mem_to_wb_bus[31:0];
-    wire [31:0] data1, data2;
+    wire [31:0] data1, data2, lo_data, hi_data;
 
     //读存停顿
     reg use_data1, use_data2;   //跳转指令使用，计算指令可通过sel_alu_src判断
@@ -136,6 +167,14 @@ module ID(
                                 (use_data2 || sel_alu_src2[0]) && (ex_to_mem_rwaddr==rt));
  
     //重定向
+    assign lo_data = ex_to_mem_lwe ? ex_to_mem_lwdata :
+                     mem_to_wb_lwe ? mem_to_wb_lwdata :
+                     wb_lo_we ? lo_wdata :
+                     LO;
+    assign hi_data = ex_to_mem_hwe ? ex_to_mem_hwdata :
+                     mem_to_wb_hwe ? mem_to_wb_hwdata :
+                     wb_hi_we ? hi_wdata :
+                     HI;
     assign data1 = ex_to_mem_rwe && ex_to_mem_rwaddr==rs ? ex_to_mem_rwdata :
                    mem_to_wb_rwe && mem_to_wb_rwaddr==rs ? mem_to_wb_rwdata :
                    wb_rf_we && wb_rf_waddr==rs ? wb_rf_wdata :
@@ -147,14 +186,16 @@ module ID(
 
     always @ (*) begin  //译码核心
         //初始化，必须显式赋值
-        sel_alu_src1 = 3'b000;
-        sel_alu_src2 = 4'b0000;
-        sel_rf_dst = 3'b000;
+        sel_alu_src1 = 5'b0;
+        sel_alu_src2 = 4'b0;
+        sel_rf_dst = 3'b0;
         
         //绝大部分情况下的默认值，不显式赋默认值
         {op_add, op_sub, op_slt, op_sltu,
          op_and, op_nor, op_or, op_xor,
          op_sll, op_srl, op_sra, op_lui} = 12'b0;
+        {inst_mul, inst_mulu, inst_div, inst_divu} = 4'b0;
+        {lo_we, hi_we} = 2'b0;
 
         //计算指令默认值
         br_e = 1'b0;
@@ -189,6 +230,58 @@ module ID(
                     sel_alu_src1[0] = 1'b1; // rs
                     sel_alu_src2[0] = 1'b1; // rt
                     sel_rf_dst[0] = 1'b1;   // rd
+                end
+                6'b010000: begin   //mfhi
+                    op_add = 1'b1;
+                    sel_alu_src1[4] = 1'b1; // HI
+                    sel_rf_dst[0] = 1'b1;   // rd
+                end
+                6'b010001: begin   //mthi
+                    rf_we = 1'b0;
+                    hi_we = 1'b1;
+                    sel_alu_src1[0] = 1'b1; // rs
+                end
+                6'b010010: begin   //mflo
+                    op_add = 1'b1;
+                    sel_alu_src1[3] = 1'b1; // LO
+                    sel_rf_dst[0] = 1'b1;   // rd
+                end
+                6'b010011: begin   //mtlo
+                    rf_we = 1'b0;
+                    lo_we = 1'b1;
+                    sel_alu_src1[0] = 1'b1; // rs
+                end
+                6'b011010: begin   //div
+                    rf_we = 1'b0;
+                    lo_we = 1'b1;
+                    hi_we = 1'b1;
+                    inst_div = 1'b1;
+                    sel_alu_src1[0] = 1'b1; // rs
+                    sel_alu_src2[0] = 1'b1; // rt
+                end
+                6'b011011: begin   //divu
+                    rf_we = 1'b0;
+                    lo_we = 1'b1;
+                    hi_we = 1'b1;
+                    inst_divu = 1'b1;
+                    sel_alu_src1[0] = 1'b1; // rs
+                    sel_alu_src2[0] = 1'b1; // rt
+                end
+                6'b011000: begin   //mul
+                    rf_we = 1'b0;
+                    lo_we = 1'b1;
+                    hi_we = 1'b1;
+                    inst_mul = 1'b1;
+                    sel_alu_src1[0] = 1'b1; // rs
+                    sel_alu_src2[0] = 1'b1; // rt
+                end
+                6'b011001: begin   //mulu
+                    rf_we = 1'b0;
+                    lo_we = 1'b1;
+                    hi_we = 1'b1;
+                    inst_mulu = 1'b1;
+                    sel_alu_src1[0] = 1'b1; // rs
+                    sel_alu_src2[0] = 1'b1; // rt
                 end
                 6'b100100: begin   //and
                     op_and = 1'b1;
@@ -458,18 +551,21 @@ module ID(
 
 
     assign id_to_ex_bus = {
-        id_pc,          // 158:127
-        inst,           // 126:95
-        alu_op,         // 94:83
-        sel_alu_src1,   // 82:80
-        sel_alu_src2,   // 79:76
-        data_ram_en,    // 75
-        data_ram_wen,   // 74:71
-        rf_we,          // 70
-        rf_waddr,       // 69:65
-        sel_rf_res,     // 64
-        data1,         // 63:32
-        data2          // 31:0
+        lo_data, hi_data,  // 230:167
+        lo_we, hi_we,      // 166:165
+        inst_mul, inst_mulu, inst_div, inst_divu, // 164 :161
+        id_pc,             // 160:129
+        inst,              // 128:97
+        alu_op,            // 96:85
+        sel_alu_src1,      // 84:80
+        sel_alu_src2,      // 79:76
+        data_ram_en,       // 75
+        data_ram_wen,      // 74:71
+        rf_we,             // 70
+        rf_waddr,          // 69:65
+        sel_rf_res,        // 64
+        data1,             // 63:32
+        data2              // 31:0
     };
 
     assign br_bus = {
