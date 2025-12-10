@@ -163,9 +163,9 @@ module ID(
     reg use_data1, use_data2;   //跳转指令使用，计算指令可通过sel_alu_src判断
 
     assign stallreq_for_load = ex_to_mem_load && 
-                               ((use_data1 || sel_alu_src1[0]) && (ex_to_mem_rwaddr==rs) ||
-                                (use_data2 || sel_alu_src2[0]) && (ex_to_mem_rwaddr==rt));
- 
+                            ((use_data1 || sel_alu_src1[0]) && (ex_to_mem_rwaddr==rs) ||
+                            (use_data2 || sel_alu_src2[0]) && (ex_to_mem_rwaddr==rt));
+
     //重定向
     assign lo_data = ex_to_mem_lwe ? ex_to_mem_lwdata :
                      mem_to_wb_lwe ? mem_to_wb_lwdata :

@@ -3,6 +3,8 @@ module IF(
     input wire clk,
     input wire rst,
     input wire [`StallBus-1:0] stall,
+    input wire stallreq_for_load,
+    input wire stallreq_for_ex,
 
     // input wire flush,
     // input wire [31:0] new_pc,
@@ -50,8 +52,7 @@ module IF(
     assign next_pc = br_e ? br_addr 
                    : pc_reg + 32'h4;
 
-    
-    assign inst_sram_en = ce_reg && (stall[0]==`NoStop);
+    assign inst_sram_en = ce_reg && !stallreq_for_load && !stallreq_for_ex;
     assign inst_sram_wen = 4'b0;
     assign inst_sram_addr = pc_reg;
     assign inst_sram_wdata = 32'b0;
