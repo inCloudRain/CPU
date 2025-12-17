@@ -65,16 +65,23 @@ module alu(
     assign srl_result = alu_src2 >> alu_src1[4:0];
     assign sra_result = ($signed(alu_src2)) >>> alu_src1[4:0];
 
-    assign alu_result = ({32{op_add|op_sub  }} & add_sub_result)
-                      | ({32{op_slt         }} & slt_result)
-                      | ({32{op_sltu        }} & sltu_result)
-                      | ({32{op_and         }} & and_result)
-                      | ({32{op_nor         }} & nor_result)
-                      | ({32{op_or          }} & or_result)
-                      | ({32{op_xor         }} & xor_result)
-                      | ({32{op_sll         }} & sll_result)
-                      | ({32{op_srl         }} & srl_result)
-                      | ({32{op_sra         }} & sra_result)
-                      | ({32{op_lui         }} & lui_result);
-                      
+    reg [31:0] result_reg;
+    always @(*) begin
+        case (1'b1)
+            op_add:     result_reg = add_sub_result;
+            op_sub:     result_reg = add_sub_result;
+            op_slt:     result_reg = slt_result;
+            op_sltu:    result_reg = sltu_result;
+            op_and:     result_reg = and_result;
+            op_nor:     result_reg = nor_result;
+            op_or:      result_reg = or_result;
+            op_xor:     result_reg = xor_result;
+            op_sll:     result_reg = sll_result;
+            op_srl:     result_reg = srl_result;
+            op_sra:     result_reg = sra_result;
+            op_lui:     result_reg = lui_result;
+            default:    result_reg = 32'b0;
+        endcase
+    end
+    assign alu_result = result_reg;
 endmodule
