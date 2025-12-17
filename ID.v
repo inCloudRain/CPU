@@ -114,6 +114,8 @@ module ID(
     reg op_sll, op_srl, op_sra, op_lui;
 
     reg inst_mul, inst_mulu, inst_div, inst_divu;
+    reg inst_lb, inst_lbu, inst_lh, inst_lhu;
+    reg inst_sb, inst_sh;
 
     wire [31:0] rdata1, rdata2;
 
@@ -196,6 +198,8 @@ module ID(
          op_sll, op_srl, op_sra, op_lui} = 12'b0;
         {inst_mul, inst_mulu, inst_div, inst_divu} = 4'b0;
         {lo_we, hi_we} = 2'b0;
+        {inst_lb, inst_lbu, inst_lh, inst_lhu} = 4'b0;
+        {inst_sb, inst_sh} = 2'b0;
 
         //计算指令默认值
         br_e = 1'b0;
@@ -515,6 +519,34 @@ module ID(
             rf_we = 1'b1;
             sel_rf_res = 1'b1;
         case(opcode) //读存指令
+            6'b100000: begin  //lb
+                inst_lb = 1'b1;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+                sel_rf_dst[1] = 1'b1;   // rt
+            end
+            6'b100100: begin  //lbu
+                inst_lbu = 1'b1;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+                sel_rf_dst[1] = 1'b1;   // rt
+            end
+            6'b100001: begin  //lh
+                inst_lh = 1'b1;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+                sel_rf_dst[1] = 1'b1;   // rt
+            end
+            6'b100101: begin  //lhu
+                inst_lhu = 1'b1;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+                sel_rf_dst[1] = 1'b1;   // rt
+            end
             6'b100011: begin  //lw
                 op_add = 1'b1;
                 sel_alu_src1[0] = 1'b1; // rs
@@ -531,6 +563,20 @@ module ID(
             rf_we = 1'b0;
             sel_rf_res = 1'b0;
         case(opcode) //写存指令
+            6'b101000: begin  //sb
+                inst_sb = 1'b1;
+                data_ram_wen = 4'b1111;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+            end
+            6'b101001: begin  //sh
+                inst_sh = 1'b1;
+                data_ram_wen = 4'b1111;
+                op_add = 1'b1;
+                sel_alu_src1[0] = 1'b1; // rs
+                sel_alu_src2[1] = 1'b1; // imm_sign_extend
+            end
             6'b101011: begin  //sw
                 data_ram_wen = 4'b1111;
                 op_add = 1'b1;
@@ -551,6 +597,8 @@ module ID(
 
 
     assign id_to_ex_bus = {
+        inst_sb, inst_sh,  // 236:235
+        inst_lb, inst_lbu, inst_lh, inst_lhu, // 234:231
         lo_data, hi_data,  // 230:167
         lo_we, hi_we,      // 166:165
         inst_mul, inst_mulu, inst_div, inst_divu, // 164 :161
