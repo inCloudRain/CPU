@@ -110,7 +110,8 @@ module EX(
     assign data_sram_en    = data_ram_en;
     assign data_sram_wen   = data_ram_wen & data_ram_sel;
     assign data_sram_addr  = ex_result;
-    assign data_sram_wdata = rf_rdata2;
+    assign data_sram_wdata = inst_sb ? {4{rf_rdata2[7:0]}}  :
+                             inst_sh ? {2{rf_rdata2[15:0]}} : rf_rdata2;
 
     // MUL part
     wire [63:0] mul_result;
