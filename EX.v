@@ -47,9 +47,13 @@ module EX(
     reg is_in_delayslot;
 
     wire inst_mul, inst_mulu, inst_div, inst_divu;
+    wire inst_lb, inst_lbu, inst_lh, inst_lhu;
+    wire inst_sb, inst_sh;
     wire lo_we, hi_we;
 
     assign {
+        inst_sb, inst_sh,  // 236:235
+        inst_lb, inst_lbu, inst_lh, inst_lhu, // 234:231
         lo_data, hi_data,  // 230:167
         lo_we, hi_we,      // 166:165
         inst_mul, inst_mulu, inst_div, inst_divu, // 164 :161
@@ -94,8 +98,17 @@ module EX(
     assign ex_result = alu_result;
 
     //发出访存请求
+    wire [3:0] byte_sel;
+    wire [3:0] data_ram_sel;
+    decoder_2_4 u_decoder_2_4(
+        .in  (ex_result[1:0]),
+        .out (byte_sel      )
+    );
+    assign data_ram_sel = inst_sb | inst_lb | inst_lbu ? byte_sel :
+                          inst_sh | inst_lh | inst_lhu ? {{2{byte_sel[2]}},{2{byte_sel[0]}}} :
+                          4'b1111;
     assign data_sram_en    = data_ram_en;
-    assign data_sram_wen   = data_ram_wen;
+    assign data_sram_wen   = data_ram_wen & data_ram_sel;
     assign data_sram_addr  = ex_result;
     assign data_sram_wdata = rf_rdata2;
 
@@ -213,6 +226,8 @@ module EX(
                       rf_rdata1;
 
     assign ex_to_mem_bus = {
+        byte_sel,         // 149:146
+        inst_lb, inst_lbu, inst_lh, inst_lhu, // 145:142
         lo_we,          // 141
         lo_wdata,       // 140:109
         hi_we,          // 108
