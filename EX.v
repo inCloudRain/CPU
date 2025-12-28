@@ -131,8 +131,9 @@ module EX(
         .in  (ex_result[1:0]),
         .out (byte_sel      )
     );
-    assign data_ram_sel = inst_sb | inst_lb | inst_lbu ? byte_sel :
-                          inst_sh | inst_lh | inst_lhu ? {{2{byte_sel[2]}},{2{byte_sel[0]}}} :
+    // Use bit1 of the target address to select the halfword so misaligned sh/lh/lhu still flag ADES/ADEL
+    assign data_ram_sel = (inst_sb | inst_lb | inst_lbu) ? byte_sel :
+                          (inst_sh | inst_lh | inst_lhu) ? (ex_result[1] ? 4'b1100 : 4'b0011) :
                           4'b1111;
 
     // Alignment checks early in EX to block memory side effects on bad addresses

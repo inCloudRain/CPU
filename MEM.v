@@ -117,8 +117,8 @@ module MEM(
 
     // 中断判定
     // Use the sticky TI bit (CAUSE[30]) so timer interrupts are not lost when IE/IM are enabled later
-    wire [5:0] ip = {cp0_cause[30], cp0_cause[14:10]};
-    wire [5:0] im = cp0_status[15:10];
+    wire [7:0] ip = {cp0_cause[15] | cp0_cause[30], cp0_cause[14:8]};
+    wire [7:0] im = cp0_status[15:8];
     wire int_pending = (excepttype_in==5'b0) && (cp0_status[1]==1'b0) && (cp0_status[0]==1'b1) && (|(ip & im));
 
     reg [4:0] excepttype_final;
@@ -166,6 +166,11 @@ module MEM(
         if (!rst && mem_pc==32'hbfc0_17f8) begin
             $display("[DBG][%t] pc=%h sel_rf_res=%b inst_lb=%b inst_lbu=%b inst_lh=%b inst_lhu=%b data_ram_en=%b data_ram_wen=%b ex_result=%h misalign_lw=%b", $time,
                      mem_pc, sel_rf_res, inst_lb, inst_lbu, inst_lh, inst_lhu, data_ram_en, data_ram_wen, ex_result, (sel_rf_res && (ex_result[1:0]!=2'b00) && ~(inst_lb|inst_lbu|inst_lh|inst_lhu)));
+        end
+        // Trace the soft-interrupt wait loop to observe why int_pending is not asserted
+        if (!rst && mem_pc==32'hbfc0_c9c4) begin
+            $display("[DBG77][%t] pc=%h status=%h cause=%h ip=%b im=%b exc_in=%0h int_pend=%b", $time,
+                     mem_pc, cp0_status, cp0_cause, ip, im, excepttype_in, int_pending);
         end
     end
 
