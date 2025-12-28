@@ -36,19 +36,26 @@ module WB(
     wire rf_we;
     wire [4:0] rf_waddr;
     wire [31:0] rf_wdata;
+    wire [31:0] badvaddr;
+    wire is_in_delayslot;
+    wire [4:0] excepttype;
 
     wire lo_we, hi_we;
     wire [31:0] lo_wdata, hi_wdata;
 
+    // upper exception fields are consumed by CP0 in core
     assign {
-        lo_we,      // 135
-        lo_wdata,   // 134:103
-        hi_we,      // 102
-        hi_wdata,   // 101:70
-        wb_pc,
-        rf_we,
-        rf_waddr,
-        rf_wdata
+        badvaddr,         // 173:142
+        is_in_delayslot,  //141
+        excepttype,       //140:136
+        lo_we,            //135
+        lo_wdata,         //134:103
+        hi_we,            //102
+        hi_wdata,         //101:70
+        wb_pc,            //69:38
+        rf_we,            //37
+        rf_waddr,         //36:32
+        rf_wdata          //31:0
     } = mem_to_wb_bus_r;
 
     assign wb_to_rf_bus = {
@@ -65,6 +72,16 @@ module WB(
     assign debug_wb_rf_wen = {4{rf_we}};
     assign debug_wb_rf_wnum = rf_waddr;
     assign debug_wb_rf_wdata = rf_wdata;
+
+    // Debug: watch k1 writeback near failure
+    always @(posedge clk) begin
+        if (rf_we && rf_waddr==5'd27) begin
+            $display("[WB][%t] pc=%h wnum=%0d wdata=%h", $time, wb_pc, rf_waddr, rf_wdata);
+        end
+        if (hi_we) begin
+            $display("[WB][%t] HI write pc=%h data=%h", $time, wb_pc, hi_wdata);
+        end
+    end
 
     
 endmodule

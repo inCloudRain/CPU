@@ -2,12 +2,16 @@
 module EX(
     input wire clk,
     input wire rst,
-    // input wire flush,
+    input wire flush,
     input wire [`StallBus-1:0] stall,
 
     input wire [`ID_TO_EX_WD-1:0] id_to_ex_bus,
 
     output wire [`EX_TO_MEM_WD-1:0] ex_to_mem_bus,
+
+    input wire [31:0] cp0_rdata,
+    output wire [4:0] cp0_raddr,
+    output wire [2:0] cp0_rsel,
 
     output wire data_sram_en,
     output wire [3:0] data_sram_wen,
@@ -20,12 +24,9 @@ module EX(
     reg [`ID_TO_EX_WD-1:0] id_to_ex_bus_r;
 
     always @ (posedge clk) begin
-        if (rst) begin
+        if (rst || flush) begin
             id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
         end
-        // else if (flush) begin
-        //     id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
-        // end
         else if (stall[2]==`Stop && stall[3]==`NoStop) begin
             id_to_ex_bus_r <= `ID_TO_EX_WD'b0;
         end
@@ -34,7 +35,8 @@ module EX(
         end
     end
 
-    wire [31:0] ex_pc, inst;
+    wire ov_en;
+    wire [31:0] ex_pc;
     wire [11:0] alu_op;
     wire [4:0] sel_alu_src1;    //rs, pc, sa_zero_extend, lo_data, hi_data
     wire [3:0] sel_alu_src2;    //rt, imm_sign_extend, 32'b8, imm_zero_extend
@@ -44,37 +46,51 @@ module EX(
     wire [4:0] rf_waddr;
     wire sel_rf_res;
     wire [31:0] rf_rdata1, rf_rdata2, lo_data, hi_data;
-    reg is_in_delayslot;
+    wire is_in_delayslot;
 
     wire inst_mul, inst_mulu, inst_div, inst_divu;
     wire inst_lb, inst_lbu, inst_lh, inst_lhu;
     wire inst_sb, inst_sh;
     wire lo_we, hi_we;
+    wire cp0_re, cp0_we;
+    wire [4:0] cp0_addr;
+    wire [2:0] cp0_sel;
+    wire [31:0] badvaddr_in;
+    wire [4:0] excepttype_in;
+    wire [31:0] imm_sign_extend, imm_zero_extend, sa_zero_extend;
+    wire has_exception;
 
     assign {
-        inst_sb, inst_sh,  // 236:235
-        inst_lb, inst_lbu, inst_lh, inst_lhu, // 234:231
-        lo_data, hi_data,  // 230:167
-        lo_we, hi_we,      // 166:165
-        inst_mul, inst_mulu, inst_div, inst_divu, // 164 :161
-        ex_pc,             // 160:129
-        inst,              // 128:97
-        alu_op,            // 96:85
-        sel_alu_src1,      // 84:80
-        sel_alu_src2,      // 79:76
-        data_ram_en,       // 75
-        data_ram_wen,      // 74:71
-        rf_we,             // 70
-        rf_waddr,          // 69:65
-        sel_rf_res,        // 64
-        rf_rdata1,         // 63:32
-        rf_rdata2          // 31:0
+        ov_en,             //349
+        rf_rdata2,         //348:317
+        rf_rdata1,         //316:285
+        sel_rf_res,        //284
+        rf_waddr,          //283:279
+        rf_we,             //278
+        data_ram_wen,      //277:274
+        data_ram_en,       //273
+        sel_alu_src2,      //272:269
+        sel_alu_src1,      //268:264
+        alu_op,            //263:252
+        ex_pc,             //251:220
+        inst_mul, inst_mulu, inst_div, inst_divu, //219:216
+        hi_we,             //215
+        lo_we,             //214
+        hi_data,           //213:182
+        lo_data,           //181:150
+        inst_lb, inst_lbu, inst_lh, inst_lhu, //149:146
+        inst_sb, inst_sh,  //145:144
+        cp0_sel,           //143:141
+        cp0_addr,          //140:136
+        cp0_we,            //135
+        cp0_re,            //134
+        badvaddr_in,       //133:102
+        is_in_delayslot,   //101
+        excepttype_in,     //100:96
+        sa_zero_extend,    //95:64
+        imm_zero_extend,   //63:32
+        imm_sign_extend    //31:0
     } = id_to_ex_bus_r;
-
-    wire [31:0] imm_sign_extend, imm_zero_extend, sa_zero_extend;
-    assign imm_sign_extend = {{16{inst[15]}},inst[15:0]};
-    assign imm_zero_extend = {16'b0, inst[15:0]};
-    assign sa_zero_extend = {27'b0,inst[10:6]};
 
     wire [31:0] alu_src1, alu_src2;
     wire [31:0] alu_result, ex_result;
@@ -95,7 +111,18 @@ module EX(
         .alu_result  (alu_result  )
     );
 
-    assign ex_result = alu_result;
+    assign ex_result = cp0_re ? cp0_rdata : alu_result;
+
+    assign cp0_raddr = cp0_addr;
+    assign cp0_rsel  = cp0_sel;
+
+    // overflow detection
+    wire add_overflow;
+    wire sub_overflow;
+    wire [31:0] add_tmp = alu_src1 + alu_src2;
+    wire [31:0] sub_tmp = alu_src1 - alu_src2;
+    assign add_overflow = ov_en && alu_op[11] && ((alu_src1[31]==alu_src2[31]) && (add_tmp[31]!=alu_src1[31]));
+    assign sub_overflow = ov_en && alu_op[10] && ((alu_src1[31]!=alu_src2[31]) && (sub_tmp[31]!=alu_src1[31]));
 
     //发出访存请求
     wire [3:0] byte_sel;
@@ -107,8 +134,9 @@ module EX(
     assign data_ram_sel = inst_sb | inst_lb | inst_lbu ? byte_sel :
                           inst_sh | inst_lh | inst_lhu ? {{2{byte_sel[2]}},{2{byte_sel[0]}}} :
                           4'b1111;
-    assign data_sram_en    = data_ram_en;
-    assign data_sram_wen   = data_ram_wen & data_ram_sel;
+    // Mask memory requests when the pipeline is being flushed (exceptions)
+    assign data_sram_en    = data_ram_en & ~flush & ~has_exception;
+    assign data_sram_wen   = (data_ram_wen & data_ram_sel) & {4{~flush & ~has_exception}};
     assign data_sram_addr  = ex_result;
     assign data_sram_wdata = inst_sb ? {4{rf_rdata2[7:0]}}  :
                              inst_sh ? {2{rf_rdata2[15:0]}} : rf_rdata2;
@@ -226,20 +254,32 @@ module EX(
                       inst_div || inst_divu ? div_result[63:32] :
                       rf_rdata1;
 
+    wire [4:0] excepttype_out = (excepttype_in!=5'b0) ? excepttype_in : ((add_overflow||sub_overflow) ? `EXC_OV : 5'b0);
+    assign has_exception = (excepttype_out!=5'b0);
+    wire [31:0] badvaddr_out = badvaddr_in;
+    wire [31:0] cp0_wdata = rf_rdata2;
+
     assign ex_to_mem_bus = {
-        byte_sel,         // 149:146
-        inst_lb, inst_lbu, inst_lh, inst_lhu, // 145:142
-        lo_we,          // 141
-        lo_wdata,       // 140:109
-        hi_we,          // 108
-        hi_wdata,       // 107:76
-        ex_pc,          // 75:44
-        data_ram_en,    // 43
-        data_ram_wen,   // 42:39
-        sel_rf_res,     // 38
-        rf_we,          // 37
-        rf_waddr,       // 36:32
-        ex_result       // 31:0
+        badvaddr_out,    //228:197
+        excepttype_out,  //196:192
+        is_in_delayslot, //191
+        ex_pc,           //190:159
+        cp0_we,          //158
+        cp0_addr,        //157:153
+        cp0_sel,         //152:150
+        cp0_wdata,       //149:118
+        byte_sel,        //117:114
+        inst_lb, inst_lbu, inst_lh, inst_lhu, //113:110
+        hi_wdata,        //109:78
+        hi_we,           //77
+        lo_wdata,        //76:45
+        lo_we,           //44
+        data_ram_wen,    //43:40
+        data_ram_en,     //39
+        sel_rf_res,      //38
+        rf_we,           //37
+        rf_waddr,        //36:32
+        ex_result        //31:0
     };
 
 endmodule
