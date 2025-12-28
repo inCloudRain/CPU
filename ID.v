@@ -35,6 +35,7 @@ module ID(
 
     // Branch flags need to be declared before use in the pipeline register
     reg br_e;
+    reg br_inst; // mark any branch/jump instruction to flag the next slot
     reg [31:0] br_addr;
 
     wire wb_rf_we;  //写寄存器使能
@@ -55,7 +56,7 @@ module ID(
         end
         else if (stall[1]==`NoStop) begin
             if_to_id_bus_r <= if_to_id_bus;
-            delay_slot_r   <= br_e; // 当前指令为分支，则下一条为延迟槽
+            delay_slot_r   <= br_inst; // 当前指令为分支或跳转，则下一条为延迟槽
         end
     end
     
@@ -236,6 +237,7 @@ module ID(
         data_ram_en = 1'b0;
         data_ram_wen = 4'b0;
         br_e = 1'b0;
+        br_inst = 1'b0;
         br_addr = 32'b0;
         excepttype = 5'b0;
         badvaddr = 32'b0;
@@ -326,9 +328,11 @@ module ID(
                             op_sra=1'b1; sel_alu_src1[0]=1'b1; sel_alu_src2[0]=1'b1; sel_rf_dst[0]=1'b1; rf_we=1'b1;
                         end
                         6'b001000: begin // jr
+                            br_inst = 1'b1;
                             br_e = 1'b1; br_addr = data1;
                         end
                         6'b001001: begin // jalr
+                            br_inst = 1'b1;
                             rf_we=1'b1; op_add=1'b1; sel_alu_src1[1]=1'b1; sel_alu_src2[2]=1'b1; sel_rf_dst[0]=1'b1; br_e=1'b1; br_addr=data1;
                         end
                         6'b001100: begin // syscall
@@ -367,6 +371,7 @@ module ID(
                     op_sltu=1'b1; sel_alu_src1[0]=1'b1; sel_alu_src2[1]=1'b1; sel_rf_dst[1]=1'b1; rf_we=1'b1;
                 end
                 6'b000001: begin // bltz/bgez
+                    br_inst = 1'b1;
                     use_data1=1'b1;
                     case(rt)
                         5'b00000: begin br_e=($signed(data1)<0); end
@@ -377,12 +382,12 @@ module ID(
                     endcase
                     br_addr = id_pc + 4 + {{14{imm[15]}}, imm, 2'b00};
                 end
-                6'b000010: begin br_e=1'b1; br_addr={id_pc[31:28], instr_index, 2'b00}; end // j
-                6'b000011: begin br_e=1'b1; br_addr={id_pc[31:28], instr_index, 2'b00}; rf_we=1'b1; op_add=1'b1; sel_alu_src1[1]=1'b1; sel_alu_src2[2]=1'b1; sel_rf_dst[2]=1'b1; end // jal
-                6'b000100: begin use_data1=1'b1; use_data2=1'b1; br_e=(data1==data2); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // beq
-                6'b000101: begin use_data1=1'b1; use_data2=1'b1; br_e=(data1!=data2); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // bne
-                6'b000110: begin use_data1=1'b1; br_e=($signed(data1)<=0); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // blez
-                6'b000111: begin use_data1=1'b1; br_e=($signed(data1)>0); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // bgtz
+                6'b000010: begin br_inst=1'b1; br_e=1'b1; br_addr={id_pc[31:28], instr_index, 2'b00}; end // j
+                6'b000011: begin br_inst=1'b1; br_e=1'b1; br_addr={id_pc[31:28], instr_index, 2'b00}; rf_we=1'b1; op_add=1'b1; sel_alu_src1[1]=1'b1; sel_alu_src2[2]=1'b1; sel_rf_dst[2]=1'b1; end // jal
+                6'b000100: begin br_inst=1'b1; use_data1=1'b1; use_data2=1'b1; br_e=(data1==data2); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // beq
+                6'b000101: begin br_inst=1'b1; use_data1=1'b1; use_data2=1'b1; br_e=(data1!=data2); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // bne
+                6'b000110: begin br_inst=1'b1; use_data1=1'b1; br_e=($signed(data1)<=0); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // blez
+                6'b000111: begin br_inst=1'b1; use_data1=1'b1; br_e=($signed(data1)>0); br_addr=id_pc+4+{{14{imm[15]}},imm,2'b00}; end // bgtz
                 6'b100000: begin // lb
                     inst_lb=1'b1; data_ram_en=1'b1; sel_rf_res=1'b1; rf_we=1'b1; op_add=1'b1; sel_alu_src1[0]=1'b1; sel_alu_src2[1]=1'b1; sel_rf_dst[1]=1'b1;
                 end

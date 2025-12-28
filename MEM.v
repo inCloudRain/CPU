@@ -149,8 +149,8 @@ module MEM(
     // Debug: print exception info during simulation
     always @(posedge clk) begin
         if (!rst && has_exception) begin
-            $display("[MEM][%t] exc=%0h pc=%h badvaddr=%h ex_res=%h load=%b store=%b int_pend=%b", $time,
-                     excepttype_final, mem_pc, badvaddr_final, ex_result, sel_rf_res, data_ram_en && |data_ram_wen, int_pending);
+            $display("[MEM][%t] exc=%0h pc=%h badvaddr=%h ex_res=%h load=%b store=%b int_pend=%b ds=%b", $time,
+                     excepttype_final, mem_pc, badvaddr_final, ex_result, sel_rf_res, data_ram_en && |data_ram_wen, int_pending, is_in_delayslot);
         end
         // Trace when interrupts become pending to catch missed handler entries
         if (!rst && int_pending) begin
