@@ -73,27 +73,5 @@ module WB(
     assign debug_wb_rf_wnum = rf_waddr;
     assign debug_wb_rf_wdata = rf_wdata;
 
-    // Debug: watch k1 writeback near failure
-    always @(posedge clk) begin
-        if (rf_we && rf_waddr==5'd27) begin
-            $display("[WB][%t] pc=%h wnum=%0d wdata=%h", $time, wb_pc, rf_waddr, rf_wdata);
-        end
-        // Targeted trace near failing testpoint in 0xbfc082xx region
-        if (rf_we && wb_pc>=32'hbfc0_8240 && wb_pc<=32'hbfc0_8290) begin
-            $display("[WB73][%t] pc=%h wnum=%0d wdata=%h", $time, wb_pc, rf_waddr, rf_wdata);
-        end
-        // Catch unexpected jump target observed in TP74 failure
-        if (rf_we && wb_pc>=32'hbfc5_d000 && wb_pc<=32'hbfc5_e000) begin
-            $display("[WB74][%t] pc=%h wnum=%0d wdata=%h", $time, wb_pc, rf_waddr, rf_wdata);
-        end
-        // Trace exception entry writes at the vector
-        if (rf_we && wb_pc==32'hbfc0_0380) begin
-            $display("[WB][%t] pc=%h wnum=%0d wdata=%h (vector)", $time, wb_pc, rf_waddr, rf_wdata);
-        end
-        if (hi_we) begin
-            $display("[WB][%t] HI write pc=%h data=%h", $time, wb_pc, hi_wdata);
-        end
-    end
-
     
 endmodule

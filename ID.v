@@ -182,13 +182,6 @@ module ID(
     wire [31:0] mem_to_wb_rwdata = mem_to_wb_bus[31:0];
     wire [31:0] data1, data2, lo_data, hi_data;
 
-    // Debug the first handler fetch to confirm the instruction value
-    always @(posedge clk) begin
-        if (!rst && id_pc==32'hbfc0_0380) begin
-            $display("[ID][%t] pc=%h inst=%h ce=%b", $time, id_pc, inst, ce);
-        end
-    end
-
     //读存停顿
     reg use_data1, use_data2;   //跳转指令使用，计算指令可通过sel_alu_src判断
 

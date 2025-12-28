@@ -80,7 +80,6 @@ module cp0(
                     `CP0_BADVADDR: badvaddr_o <= wdata;
                     default: ;
                 endcase
-                $display("[CP0][%t] mtc0 waddr=%0d wsel=%0d wdata=%h status=%h compare=%h count=%h", $time, waddr, wsel, wdata, status_o, compare_o, count_o);
             end
 
             // external interrupt pending bits

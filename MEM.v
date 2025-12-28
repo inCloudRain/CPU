@@ -146,34 +146,6 @@ module MEM(
     assign flush = has_exception;
     assign new_pc = (excepttype_final==`EXC_ERET) ? cp0_epc : 32'hbfc0_0380;
 
-    // Debug: print exception info during simulation
-    always @(posedge clk) begin
-        if (!rst && has_exception) begin
-            $display("[MEM][%t] exc=%0h pc=%h badvaddr=%h ex_res=%h load=%b store=%b int_pend=%b ds=%b", $time,
-                     excepttype_final, mem_pc, badvaddr_final, ex_result, sel_rf_res, data_ram_en && |data_ram_wen, int_pending, is_in_delayslot);
-        end
-        // Trace when interrupts become pending to catch missed handler entries
-        if (!rst && int_pending) begin
-            $display("[MEM][%t] INT pending pc=%h status=%h cause=%h", $time, mem_pc, cp0_status, cp0_cause);
-        end
-           // Debug window around handler re-entry and failing store/load sequences
-           if (!rst && ((mem_pc>=32'hbfc0_8144 && mem_pc<=32'hbfc0_8220) ||
-                     (mem_pc>=32'hbfc0_8240 && mem_pc<=32'hbfc0_8290))) begin
-              $display("[DBG73][%t] pc=%h ex_res=%h sel_rf_res=%b data_en=%b data_wen=%b data_sel=%b rdata=%h", $time,
-                  mem_pc, ex_result, sel_rf_res, data_ram_en, data_ram_wen, data_ram_sel, data_sram_rdata);
-           end
-        // Debug snapshot for failing testpoint investigation
-        if (!rst && mem_pc==32'hbfc0_17f8) begin
-            $display("[DBG][%t] pc=%h sel_rf_res=%b inst_lb=%b inst_lbu=%b inst_lh=%b inst_lhu=%b data_ram_en=%b data_ram_wen=%b ex_result=%h misalign_lw=%b", $time,
-                     mem_pc, sel_rf_res, inst_lb, inst_lbu, inst_lh, inst_lhu, data_ram_en, data_ram_wen, ex_result, (sel_rf_res && (ex_result[1:0]!=2'b00) && ~(inst_lb|inst_lbu|inst_lh|inst_lhu)));
-        end
-        // Trace the soft-interrupt wait loop to observe why int_pending is not asserted
-        if (!rst && mem_pc==32'hbfc0_c9c4) begin
-            $display("[DBG77][%t] pc=%h status=%h cause=%h ip=%b im=%b exc_in=%0h int_pend=%b", $time,
-                     mem_pc, cp0_status, cp0_cause, ip, im, excepttype_in, int_pending);
-        end
-    end
-
     // 写回与CP0写
     wire rf_we = has_exception ? 1'b0 : rf_we_in;
     wire [31:0] rf_wdata = sel_rf_res ? mem_result : ex_result;
