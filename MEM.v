@@ -152,6 +152,16 @@ module MEM(
             $display("[MEM][%t] exc=%0h pc=%h badvaddr=%h ex_res=%h load=%b store=%b int_pend=%b", $time,
                      excepttype_final, mem_pc, badvaddr_final, ex_result, sel_rf_res, data_ram_en && |data_ram_wen, int_pending);
         end
+        // Trace when interrupts become pending to catch missed handler entries
+        if (!rst && int_pending) begin
+            $display("[MEM][%t] INT pending pc=%h status=%h cause=%h", $time, mem_pc, cp0_status, cp0_cause);
+        end
+           // Debug window around handler re-entry and failing store/load sequences
+           if (!rst && ((mem_pc>=32'hbfc0_8144 && mem_pc<=32'hbfc0_8220) ||
+                     (mem_pc>=32'hbfc0_8240 && mem_pc<=32'hbfc0_8290))) begin
+              $display("[DBG73][%t] pc=%h ex_res=%h sel_rf_res=%b data_en=%b data_wen=%b data_sel=%b rdata=%h", $time,
+                  mem_pc, ex_result, sel_rf_res, data_ram_en, data_ram_wen, data_ram_sel, data_sram_rdata);
+           end
         // Debug snapshot for failing testpoint investigation
         if (!rst && mem_pc==32'hbfc0_17f8) begin
             $display("[DBG][%t] pc=%h sel_rf_res=%b inst_lb=%b inst_lbu=%b inst_lh=%b inst_lhu=%b data_ram_en=%b data_ram_wen=%b ex_result=%h misalign_lw=%b", $time,

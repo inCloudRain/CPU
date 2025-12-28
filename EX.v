@@ -134,6 +134,15 @@ module EX(
     assign data_ram_sel = inst_sb | inst_lb | inst_lbu ? byte_sel :
                           inst_sh | inst_lh | inst_lhu ? {{2{byte_sel[2]}},{2{byte_sel[0]}}} :
                           4'b1111;
+
+    // Alignment checks early in EX to block memory side effects on bad addresses
+    wire is_sw = data_ram_en && data_ram_wen==4'b1111 && data_ram_sel==4'b1111;
+    wire is_sh = data_ram_en && data_ram_wen==4'b1111 && (data_ram_sel==4'b0011 || data_ram_sel==4'b1100);
+    wire is_lw = sel_rf_res && ~(inst_lb|inst_lbu|inst_lh|inst_lhu);
+    wire misalign_lw = is_lw && (ex_result[1:0]!=2'b00);
+    wire misalign_sw = is_sw && (ex_result[1:0]!=2'b00);
+    wire misalign_lh = (inst_lh|inst_lhu) && ex_result[0];
+    wire misalign_sh = is_sh && ex_result[0];
     // Mask memory requests when the pipeline is being flushed (exceptions)
     assign data_sram_en    = data_ram_en & ~flush & ~has_exception;
     assign data_sram_wen   = (data_ram_wen & data_ram_sel) & {4{~flush & ~has_exception}};
@@ -254,9 +263,15 @@ module EX(
                       inst_div || inst_divu ? div_result[63:32] :
                       rf_rdata1;
 
-    wire [4:0] excepttype_out = (excepttype_in!=5'b0) ? excepttype_in : ((add_overflow||sub_overflow) ? `EXC_OV : 5'b0);
+    wire [4:0] excepttype_out = (excepttype_in!=5'b0) ? excepttype_in :
+                                misalign_lw ? `EXC_ADEL :
+                                misalign_sw ? `EXC_ADES :
+                                misalign_lh ? `EXC_ADEL :
+                                misalign_sh ? `EXC_ADES :
+                                (add_overflow||sub_overflow) ? `EXC_OV :
+                                5'b0;
     assign has_exception = (excepttype_out!=5'b0);
-    wire [31:0] badvaddr_out = badvaddr_in;
+    wire [31:0] badvaddr_out = (misalign_lw | misalign_sw | misalign_lh | misalign_sh) ? ex_result : badvaddr_in;
     wire [31:0] cp0_wdata = rf_rdata2;
 
     assign ex_to_mem_bus = {
@@ -268,7 +283,7 @@ module EX(
         cp0_addr,        //157:153
         cp0_sel,         //152:150
         cp0_wdata,       //149:118
-        byte_sel,        //117:114
+        data_ram_sel,    //117:114
         inst_lb, inst_lbu, inst_lh, inst_lhu, //113:110
         hi_wdata,        //109:78
         hi_we,           //77
