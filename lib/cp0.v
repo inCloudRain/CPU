@@ -21,7 +21,6 @@ module cp0(
     input  wire [31:0] badvaddr_i,
 
     input  wire [5:0]  ext_int_i,
-    input  wire        timer_int_i,
 
     output reg  [31:0] count_o,
     output reg  [31:0] compare_o,
@@ -83,7 +82,7 @@ module cp0(
             end
 
             // external interrupt pending bits
-            cause_o[15:10] <= {timer_int_i, ext_int_i[4:0]};
+            cause_o[15:10] <= {set_ti, ext_int_i[4:0]};
             cause_o[23]    <= 1'b0; // CE
 
             // exception handling side effects

@@ -28,11 +28,7 @@ module mycpu_core(
     wire [`BR_WD-1:0]        br_bus;
     wire [`WB_TO_RF_WD-1:0]  wb_to_rf_bus;
 
-    // Raw data-side signals from EX; masked with flush before leaving the core
-    wire data_sram_en_raw;
-    wire [3:0] data_sram_wen_raw;
-    wire [31:0] data_sram_addr_raw;
-    wire [31:0] data_sram_wdata_raw;
+    // Data-side signals are driven by EX
 
     wire [`StallBus-1:0] stall;
     wire stallreq_for_load;
@@ -76,7 +72,6 @@ module mycpu_core(
         .rst             (rst             ),
         .flush           (flush           ),
         .stall           (stall           ),
-        .stallreq        (),
         .if_to_id_bus    (if_to_id_bus    ),
         .inst_sram_rdata (inst_sram_rdata ),
         .wb_to_rf_bus    (wb_to_rf_bus    ),
@@ -97,10 +92,10 @@ module mycpu_core(
         .cp0_rdata       (cp0_rdata       ),
         .cp0_raddr       (cp0_raddr       ),
         .cp0_rsel        (cp0_rsel        ),
-        .data_sram_en    (data_sram_en_raw    ),
-        .data_sram_wen   (data_sram_wen_raw   ),
-        .data_sram_addr  (data_sram_addr_raw  ),
-        .data_sram_wdata (data_sram_wdata_raw ),
+        .data_sram_en    (data_sram_en     ),
+        .data_sram_wen   (data_sram_wen    ),
+        .data_sram_addr  (data_sram_addr   ),
+        .data_sram_wdata (data_sram_wdata  ),
         .stallreq_for_ex (stallreq_for_ex )
     );
 
@@ -113,8 +108,6 @@ module mycpu_core(
         .cp0_status      (cp0_status      ),
         .cp0_cause       (cp0_cause       ),
         .cp0_epc         (cp0_epc         ),
-        .cp0_badvaddr    (cp0_badvaddr    ),
-        .timer_int       (timer_int       ),
         .flush           (flush           ),
         .new_pc          (new_pc          ),
         .cp0_we          (cp0_we          ),
@@ -158,7 +151,6 @@ module mycpu_core(
         .current_inst_addr_i (mem_to_wb_bus[69:38]),
         .badvaddr_i          (mem_to_wb_bus[173:142]),
         .ext_int_i           (int                 ),
-        .timer_int_i         (timer_int           ),
         .count_o             (cp0_count           ),
         .compare_o           (cp0_compare         ),
         .status_o            (cp0_status          ),
@@ -167,11 +159,5 @@ module mycpu_core(
         .badvaddr_o          (cp0_badvaddr        ),
         .timer_int_o         (timer_int           )
     );
-
-    // Squash any data-side request when a flush is asserted (exception/eret)
-    assign data_sram_en    = data_sram_en_raw & ~flush;
-    assign data_sram_wen   = data_sram_wen_raw & {4{~flush}};
-    assign data_sram_addr  = data_sram_addr_raw;
-    assign data_sram_wdata = data_sram_wdata_raw;
 
 endmodule

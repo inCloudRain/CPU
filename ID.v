@@ -4,8 +4,6 @@ module ID(
     input wire rst,
     input wire flush,
     input wire [`StallBus-1:0] stall,
-    
-    output wire stallreq,
 
     input wire [`IF_TO_ID_WD-1:0] if_to_id_bus,
 
@@ -188,7 +186,6 @@ module ID(
     assign stallreq_for_load = ex_to_mem_load && 
                                ((use_data1 || sel_alu_src1[0]) && (ex_to_mem_rwaddr==rs) ||
                                 (use_data2 || sel_alu_src2[0]) && (ex_to_mem_rwaddr==rt));
-    assign stallreq = 1'b0;
  
     //重定向
     assign lo_data = ex_to_mem_lwe ? ex_to_mem_lwdata :
@@ -429,11 +426,6 @@ module ID(
                     excepttype = `EXC_RI;
                 end
             endcase
-        end
-
-        // 分支立即数的使用标记
-        if (br_e) begin
-            // nothing else
         end
     end
 

@@ -117,12 +117,11 @@ module EX(
     assign cp0_rsel  = cp0_sel;
 
     // overflow detection
+    // Use the ALU result bit31 for overflow check (equivalent to recomputing add/sub here)
     wire add_overflow;
     wire sub_overflow;
-    wire [31:0] add_tmp = alu_src1 + alu_src2;
-    wire [31:0] sub_tmp = alu_src1 - alu_src2;
-    assign add_overflow = ov_en && alu_op[11] && ((alu_src1[31]==alu_src2[31]) && (add_tmp[31]!=alu_src1[31]));
-    assign sub_overflow = ov_en && alu_op[10] && ((alu_src1[31]!=alu_src2[31]) && (sub_tmp[31]!=alu_src1[31]));
+    assign add_overflow = ov_en && alu_op[11] && ((alu_src1[31]==alu_src2[31]) && (alu_result[31]!=alu_src1[31]));
+    assign sub_overflow = ov_en && alu_op[10] && ((alu_src1[31]!=alu_src2[31]) && (alu_result[31]!=alu_src1[31]));
 
     //发出访存请求
     wire [3:0] byte_sel;
@@ -144,7 +143,7 @@ module EX(
     wire misalign_sw = is_sw && (ex_result[1:0]!=2'b00);
     wire misalign_lh = (inst_lh|inst_lhu) && ex_result[0];
     wire misalign_sh = is_sh && ex_result[0];
-    // Mask memory requests when the pipeline is being flushed (exceptions)
+    // Mask memory requests on exceptions/flush to avoid side effects on squashed instructions
     assign data_sram_en    = data_ram_en & ~flush & ~has_exception;
     assign data_sram_wen   = (data_ram_wen & data_ram_sel) & {4{~flush & ~has_exception}};
     assign data_sram_addr  = ex_result;

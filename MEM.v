@@ -10,8 +10,6 @@ module MEM(
     input wire [31:0] cp0_status,
     input wire [31:0] cp0_cause,
     input wire [31:0] cp0_epc,
-    input wire [31:0] cp0_badvaddr,
-    input wire        timer_int,
 
     output wire       flush,
     output wire [31:0] new_pc,
@@ -102,19 +100,6 @@ module MEM(
                               inst_lhu   ? {{16{1'b0}},h_data} :
                               w_data;
 
-    // 对齐检查
-    wire is_sw = data_ram_en && data_ram_wen==4'b1111 && data_ram_sel==4'b1111;
-    wire is_sh = data_ram_en && data_ram_wen==4'b1111 && (data_ram_sel==4'b0011 || data_ram_sel==4'b1100);
-    wire is_sb = data_ram_en && data_ram_wen==4'b1111 && (data_ram_sel==4'b0001 || data_ram_sel==4'b0010 || data_ram_sel==4'b0100 || data_ram_sel==4'b1000);
-    wire is_lw = sel_rf_res && ~(inst_lb|inst_lbu|inst_lh|inst_lhu);
-    wire misalign_lw = is_lw && (ex_result[1:0]!=2'b00);
-    wire misalign_sw = is_sw && (ex_result[1:0]!=2'b00);
-    wire misalign_lh = (inst_lh|inst_lhu) && ex_result[0];
-    wire misalign_sh = is_sh && ex_result[0];
-
-    wire adel_load = misalign_lw | misalign_lh;
-    wire ades_store = misalign_sw | misalign_sh;
-
     // 中断判定
     // Use the sticky TI bit (CAUSE[30]) so timer interrupts are not lost when IE/IM are enabled later
     wire [7:0] ip = {cp0_cause[15] | cp0_cause[30], cp0_cause[14:8]};
@@ -128,14 +113,8 @@ module MEM(
         excepttype_final = excepttype_in;
         badvaddr_final   = badvaddr_in;
 
-        // Align/addr errors take priority and must carry the fault address
-        if (adel_load) begin
-            excepttype_final = `EXC_ADEL;
-            badvaddr_final   = ex_result;
-        end else if (ades_store) begin
-            excepttype_final = `EXC_ADES;
-            badvaddr_final   = ex_result;
-        end else if (excepttype_in==`EXC_ADEL || excepttype_in==`EXC_ADES) begin
+        // Data-side ADEL/ADES are generated in EX; MEM only preserves/forwards the fault address
+        if (excepttype_in==`EXC_ADEL || excepttype_in==`EXC_ADES) begin
             badvaddr_final = (badvaddr_in!=32'b0) ? badvaddr_in : ex_result;
         end else if (excepttype_in==5'b0 && int_pending) begin
             excepttype_final = `EXC_INT;
